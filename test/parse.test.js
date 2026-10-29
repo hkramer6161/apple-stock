@@ -194,6 +194,27 @@ test('US stores report miles, which are filtered as km', () => {
   assert.deepEqual(pickup.map((p) => [p.storeName, Math.round(p.distanceKm)]), [['Near', 16]]);
 });
 
+test('pickup distances use the selected country in summaries and notifications', async () => {
+  const { summarize, buildMessage } = await import('../src/checker.js');
+  const data = { body: { content: { pickupMessage: { stores: [{
+    storeName: 'Example', storeNumber: 'R1', storedistance: 16.09344, storeDistanceWithUnit: '16.09344 km',
+    partsAvailability: { A: { pickupDisplay: 'available', pickupSearchQuote: 'Available Today' } },
+  }] } } } };
+  const selected = [{ partNumber: 'A', name: 'Phone' }];
+  assert.equal(parseFulfillment(data).pickup[0].distance, '16.09344 km');
+  assert.equal(parseFulfillment(data, { country: 'uk' }).pickup[0].distance, '16.09344 km');
+  const us = parseFulfillment(data, { country: 'us' });
+  assert.equal(us.pickup[0].distance, '10 mi');
+  assert.match(summarize(selected, us)[0].status, /10 mi/);
+  assert.match(buildMessage(us.pickup, new Map([['A', 'Phone']]), 'https://www.apple.com/shop').text, /10 mi/);
+  const store = data.body.content.pickupMessage.stores[0];
+  store.storedistance = 10;
+  store.storeDistanceWithUnit = '10 mi';
+  assert.equal(parseFulfillment(data, { country: 'us' }).pickup[0].distance, '10 mi');
+  assert.equal(parseFulfillment(data, { country: 'ca' }).pickup[0].distance, '16.09 km');
+  assert.equal(parseFulfillment(data, { country: 'us', maxDistanceKm: 15 }).pickup.length, 0);
+});
+
 test('parseProducts keeps one entry per part when US pages repeat it per carrier', async () => {
   const product = (carrier) => ({ partNumber: 'MK1F4LL/A', name: 'iPhone Duo 256GB Night Sky', isCarrierDevice: carrier !== 'unlocked', carrierModel: carrier, price: { fullPrice: carrier === 'unlocked' ? 1099 : 1029 } });
   const metrics = { data: { products: ['ATT_IPHONEDUO', 'unlocked', 'VERIZON_IPHONEDUO'].map(product) } };

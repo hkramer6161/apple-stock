@@ -43,7 +43,7 @@ export function selectProducts(products, filter) {
   });
 }
 
-export function parseFulfillment(json, { maxDistanceKm = Infinity } = {}) {
+export function parseFulfillment(json, { maxDistanceKm = Infinity, country } = {}) {
   const content = json?.body?.content;
   if (!content) throw new Error('Unexpected fulfillment response shape');
 
@@ -53,13 +53,18 @@ export function parseFulfillment(json, { maxDistanceKm = Infinity } = {}) {
     const miles = /\bmi\b/.test(store.storeDistanceWithUnit ?? '');
     const distanceKm = Number(store.storedistance) * (miles ? KM_PER_MILE : 1);
     if (Number.isFinite(distanceKm) && distanceKm > maxDistanceKm) continue;
+    let distance = store.storeDistanceWithUnit ?? `${distanceKm} km`;
+    if (Number.isFinite(distanceKm) && (country === 'us' || country === 'ca')) {
+      const value = country === 'us' ? distanceKm / KM_PER_MILE : distanceKm;
+      distance = `${Number(value.toFixed(2))} ${country === 'us' ? 'mi' : 'km'}`;
+    }
     for (const [partNumber, part] of Object.entries(store.partsAvailability ?? {})) {
       pickup.push({
         partNumber,
         storeNumber: store.storeNumber,
         storeName: store.storeName,
         city: store.city,
-        distance: store.storeDistanceWithUnit ?? `${distanceKm} km`,
+        distance,
         distanceKm,
         available: STORE_AVAILABLE.has(part.pickupDisplay),
         quote: stripHtml(part.pickupSearchQuote ?? part.messageTypes?.regular?.storePickupQuote ?? ''),
