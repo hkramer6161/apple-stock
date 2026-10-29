@@ -183,3 +183,49 @@ test('product ids accept old iPhone slugs and reject unknown paths', async () =>
   assert.equal(productName('buy-ipad/ipad-mini'), 'iPad mini');
   assert.equal(productName('buy-airpods/airpods-max-2'), 'AirPods Max 2');
 });
+
+test('US stores report miles, which are filtered as km', () => {
+  const store = (name, miles) => ({
+    storeName: name, city: 'New York', storeNumber: name, storedistance: miles, storeDistanceWithUnit: `${miles} mi`,
+    partsAvailability: { 'MG464LL/A': { partNumber: 'MG464LL/A', pickupDisplay: 'available', pickupSearchQuote: 'Available Tomorrow' } },
+  });
+  const data = { head: { status: '200' }, body: { content: { pickupMessage: { stores: [store('Near', 10), store('Far', 40)] }, deliveryMessage: {} } } };
+  const { pickup } = parseFulfillment(data, { maxDistanceKm: 50 });
+  assert.deepEqual(pickup.map((p) => [p.storeName, Math.round(p.distanceKm)]), [['Near', 16]]);
+});
+
+test('parseProducts keeps one entry per part when US pages repeat it per carrier', async () => {
+  const product = (carrier) => ({ partNumber: 'MK1F4LL/A', name: 'iPhone Duo 256GB Night Sky', isCarrierDevice: carrier !== 'unlocked', carrierModel: carrier, price: { fullPrice: carrier === 'unlocked' ? 1099 : 1029 } });
+  const metrics = { data: { products: ['ATT_IPHONEDUO', 'unlocked', 'VERIZON_IPHONEDUO'].map(product) } };
+  const models = parseProducts(`<script type=application/json id=metrics>${JSON.stringify(metrics)}</script>`);
+  assert.deepEqual(models, [{ partNumber: 'MK1F4LL/A', name: 'iPhone Duo 256GB Night Sky', price: 1099 }]);
+});
+
+test('parseCatalog keeps unlocked prices when US parts repeat by carrier', () => {
+  const products = [
+    { partNumber: 'MK1F4LL/A', isCarrierDevice: true, fullPrice: 'carrierA' },
+    { partNumber: 'MK2F4LL/A', isCarrierDevice: false, fullPrice: 'unlockedB' },
+    { partNumber: 'MK1F4LL/A', isCarrierDevice: false, fullPrice: 'unlockedA' },
+    { partNumber: 'MK2F4LL/A', isCarrierDevice: true, fullPrice: 'carrierB' },
+  ];
+  const data = {
+    products,
+    displayValues: {
+      prices: {
+        carrierA: { amountBeforeTradeIn: 1029 },
+        unlockedA: { amountBeforeTradeIn: 1099 },
+        carrierB: { amountBeforeTradeIn: 1129 },
+        unlockedB: { amountBeforeTradeIn: 1199 },
+      },
+    },
+  };
+  const parse = (orderedProducts) => parseCatalog(`PRODUCT_SELECTION_BOOTSTRAP:{productSelectionData:${JSON.stringify({ ...data, products: orderedProducts })}}`);
+
+  for (const orderedProducts of [products, [...products].reverse()]) {
+    const catalog = parse(orderedProducts);
+    assert.deepEqual(
+      catalog.models.map(({ partNumber, price }) => [partNumber, price]).sort(),
+      [['MK1F4LL/A', 1099], ['MK2F4LL/A', 1199]],
+    );
+  }
+});

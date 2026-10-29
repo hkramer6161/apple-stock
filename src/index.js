@@ -29,7 +29,6 @@ async function main() {
     env,
     settingsFile: env.SETTINGS_FILE || 'settings.json',
     stateFile: env.STATE_FILE || '.state.json',
-    country: (env.COUNTRY || 'ca').toLowerCase(),
     headless: env.HEADLESS !== 'false',
     dryRun: args.has('--dry-run'),
     log,
@@ -45,7 +44,7 @@ async function main() {
     return;
   }
 
-  const intervalMs = Math.max(30, Number(env.INTERVAL_SECONDS || 120)) * 1000;
+  const intervalMs = Math.max(30, Number(env.INTERVAL_SECONDS || 30)) * 1000;
   let timer;
   const schedule = (delay) => {
     clearTimeout(timer);

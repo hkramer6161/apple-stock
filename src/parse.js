@@ -1,4 +1,5 @@
 const STORE_AVAILABLE = new Set(['available']);
+const KM_PER_MILE = 1.609344;
 
 export function parseProducts(html) {
   const match = html.match(/<script type=application\/json id=metrics>([\s\S]*?)<\/script>/)
@@ -11,8 +12,7 @@ export function parseProducts(html) {
     return [];
   }
   const products = data?.data?.products ?? [];
-  return products
-    .filter((p) => p.partNumber && p.name)
+  return uniqueParts(products.filter((p) => p.partNumber && p.name))
     .map((p) => ({ partNumber: p.partNumber, name: p.name, price: p.price?.fullPrice ?? null }))
     .sort((a, b) => storageGb(a.name) - storageGb(b.name) || a.name.localeCompare(b.name));
 }
@@ -49,7 +49,9 @@ export function parseFulfillment(json, { maxDistanceKm = Infinity } = {}) {
 
   const pickup = [];
   for (const store of content.pickupMessage?.stores ?? []) {
-    const distanceKm = Number(store.storedistance);
+    // US stores report miles; MAX_DISTANCE_KM is always kilometres.
+    const miles = /\bmi\b/.test(store.storeDistanceWithUnit ?? '');
+    const distanceKm = Number(store.storedistance) * (miles ? KM_PER_MILE : 1);
     if (Number.isFinite(distanceKm) && distanceKm > maxDistanceKm) continue;
     for (const [partNumber, part] of Object.entries(store.partsAvailability ?? {})) {
       pickup.push({
@@ -58,6 +60,7 @@ export function parseFulfillment(json, { maxDistanceKm = Infinity } = {}) {
         storeName: store.storeName,
         city: store.city,
         distance: store.storeDistanceWithUnit ?? `${distanceKm} km`,
+        distanceKm,
         available: STORE_AVAILABLE.has(part.pickupDisplay),
         quote: stripHtml(part.pickupSearchQuote ?? part.messageTypes?.regular?.storePickupQuote ?? ''),
         title: part.messageTypes?.regular?.storePickupProductTitle ?? null,
@@ -98,7 +101,7 @@ const SKIP_DIMENSIONS = new Set(['dimensionSteporder']);
 export function parseCatalog(html) {
   const data = productSelectionData(html);
   if (data?.mainDisplayValues) return parseMacCatalog(html, data);
-  const products = (data?.products ?? []).filter((p) => p.partNumber);
+  const products = uniqueParts((data?.products ?? []).filter((p) => p.partNumber));
   if (!products.length) return null;
   const values = data.displayValues ?? {};
   const images = data.imageDictionary ?? {};
@@ -128,6 +131,17 @@ export function parseCatalog(html) {
     })),
     productImages: compareImages(html),
   };
+}
+
+// US iPhone pages repeat each part once per carrier (same part, same stock);
+// keep one entry, preferring the unlocked one for its price.
+function uniqueParts(products) {
+  const byPart = new Map();
+  for (const p of products) {
+    const seen = byPart.get(p.partNumber);
+    if (!seen || (seen.isCarrierDevice && !p.isCarrierDevice)) byPart.set(p.partNumber, p);
+  }
+  return [...byPart.values()];
 }
 
 // Mac pages list build-to-order configs too; only preconfigured ones have a
