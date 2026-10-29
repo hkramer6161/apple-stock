@@ -44,7 +44,7 @@ async function main() {
     return;
   }
 
-  const intervalMs = Math.max(30, Number(env.INTERVAL_SECONDS || 120)) * 1000;
+  const intervalMs = Math.max(30, Number(env.INTERVAL_SECONDS || 30)) * 1000;
   let timer;
   const schedule = (delay) => {
     clearTimeout(timer);

@@ -91,7 +91,7 @@ The workflow is scheduled every 5 minutes, but GitHub often starts scheduled run
 | `PRODUCT` | `iphone-duo` | Store page path, e.g. `buy-iphone/iphone-17`, `buy-ipad/ipad-air`, `buy-mac/macbook-air`, `buy-airpods/airpods-pro-3` (a bare slug means `buy-iphone/<slug>`) |
 | `MODELS` | `all` | Comma-separated part numbers or words that must all appear in the model name, e.g. `256GB Night Sky, 512GB` |
 | `MAX_DISTANCE_KM` | `50` | Ignore stores farther than this |
-| `INTERVAL_SECONDS` | `120` | Time between checks for `npm start` (minimum 30, with ±15% jitter) |
+| `INTERVAL_SECONDS` | `30` | Time between checks for `npm start` (minimum 30, with ±15% jitter) |
 | `STATE_FILE` | `.state.json` | Where the last seen availability is stored |
 | `HEADLESS` | `true` | Set to `false` to watch the browser |
 

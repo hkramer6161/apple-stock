@@ -134,6 +134,7 @@ const el = (tag, props = {}, ...kids) => {
 };
 const img = (src, cls) => (src ? el('img', { src, alt: '', loading: 'lazy' }) : el('div', { className: cls ?? 'ph' }));
 const country = () => state.countries?.find((c) => c.id === state.settings.country);
+const countryFlags = { ca: '🇨🇦', us: '🇺🇸' };
 const money = (n) => (n == null ? '' : `$${Number(n).toLocaleString(country()?.locale ?? 'en-US', { maximumFractionDigits: 0 })}`);
 // Values are always km; US users pick in miles.
 const KM_PER_MILE = 1.609344;
@@ -241,7 +242,7 @@ function renderControls() {
   if (document.activeElement !== $('postal')) $('postal').value = settings.postalCode;
   if (document.activeElement !== $('email')) $('email').value = settings.emailTo;
   if (!$('country').options.length) {
-    $('country').replaceChildren(...(state.countries ?? []).map((c) => el('option', { value: c.id, textContent: c.name })));
+    $('country').replaceChildren(...(state.countries ?? []).map((c) => el('option', { value: c.id, textContent: `${countryFlags[c.id] ?? ''} ${c.name}`.trim() })));
     if (!country()) $('country').append(el('option', { value: settings.country, textContent: settings.country.toUpperCase() }));
   }
   $('country').value = settings.country;
