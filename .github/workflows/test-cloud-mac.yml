@@ -1,0 +1,25 @@
+name: Test macOS cloud stock access
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium
+      - name: Test Apple stock access without saving state
+        run: npm run check -- --dry-run
+        env:
+          POSTAL_CODE: ${{ vars.POSTAL_CODE }}
+          COUNTRY: ${{ vars.COUNTRY }}
+          PRODUCT: iphone-duo
+          MODELS: ${{ vars.MODELS }}
+          MAX_DISTANCE_KM: ${{ vars.MAX_DISTANCE_KM }}
