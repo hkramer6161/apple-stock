@@ -155,8 +155,9 @@ let preview = null;
 async function api(path, body) {
   const res = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const next = await res.json();
-  if (!next.error) state = next;
+  if (res.ok) state = next;
   render();
+  if (!res.ok) $('status').textContent = next.error || 'Request failed';
 }
 const save = (patch) => api('/api/settings', patch);
 const toggle = (list = [], key) => (list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
