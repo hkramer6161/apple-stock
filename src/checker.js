@@ -271,7 +271,7 @@ export class Checker {
 
     const results = { pickup: [], delivery: [] };
     for (const batch of chunk(selected.map((p) => p.partNumber), 10)) {
-      const parsed = parseFulfillment(await store.fetchFulfillment(batch, postalCode), { maxDistanceKm });
+      const parsed = parseFulfillment(await store.fetchFulfillment(batch, postalCode), { maxDistanceKm, country: this.settings.country });
       results.pickup.push(...parsed.pickup);
       results.delivery.push(...parsed.delivery);
     }
