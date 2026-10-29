@@ -29,7 +29,6 @@ async function main() {
     env,
     settingsFile: env.SETTINGS_FILE || 'settings.json',
     stateFile: env.STATE_FILE || '.state.json',
-    country: (env.COUNTRY || 'ca').toLowerCase(),
     headless: env.HEADLESS !== 'false',
     dryRun: args.has('--dry-run'),
     log,

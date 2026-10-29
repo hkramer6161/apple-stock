@@ -1,13 +1,14 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { AppleStore, normalizeProduct, productName } from './apple.js';
+import { AppleStore, COUNTRIES, normalizeCountry, normalizeProduct, productName } from './apple.js';
 import { availabilityKeys, parseCatalog, parseFulfillment, parseProducts, selectProducts, shortPickupQuote } from './parse.js';
 import { configuredNotifiers, notifyAll } from './notify.js';
 import { loadState, saveState } from './state.js';
 
-const SETTING_KEYS = ['product', 'model', 'filters', 'postalCode', 'maxDistanceKm', 'emailTo', 'ntfyTopic'];
+const SETTING_KEYS = ['country', 'product', 'model', 'filters', 'postalCode', 'maxDistanceKm', 'emailTo', 'ntfyTopic'];
 
 export function defaultSettings(env) {
   return {
+    country: normalizeCountry(env.COUNTRY || 'ca'),
     product: normalizeProduct(env.PRODUCT || 'iphone-duo'),
     model: env.MODELS || 'all',
     filters: {},
@@ -26,6 +27,12 @@ export function normalizeTopic(value) {
 
 export function normalizePostalCode(value) {
   return String(value ?? '').replace(/\s+/g, '').toUpperCase();
+}
+
+const POSTAL_FORMATS = { ca: /^[A-Z]\d[A-Z]\d[A-Z]\d$/, us: /^\d{5}(-\d{4})?$/ };
+
+export function postalCodeFits(code, country) {
+  return !POSTAL_FORMATS[country] || POSTAL_FORMATS[country].test(code);
 }
 
 function stringList(value) {
@@ -74,12 +81,11 @@ function chunk(list, size) {
 }
 
 export class Checker {
-  constructor({ env, settingsFile, stateFile, country, headless, dryRun, log, push }) {
+  constructor({ env, settingsFile, stateFile, headless, dryRun, log, push }) {
     this.env = env;
     this.push = push;
     this.settingsFile = settingsFile;
     this.stateFile = stateFile;
-    this.country = country;
     this.headless = headless;
     this.dryRun = dryRun;
     this.log = log;
@@ -92,25 +98,30 @@ export class Checker {
     this.lastChecked = null;
     this.error = null;
     this.checking = null;
+    this.settingsUpdate = null;
   }
 
   async init() {
     if (this.settingsFile) {
       try {
         const saved = pick(JSON.parse(await readFile(this.settingsFile, 'utf8')));
-        Object.assign(this.settings, saved, { product: normalizeProduct(saved.product ?? this.settings.product) });
+        Object.assign(this.settings, saved, {
+          country: normalizeCountry(saved.country ?? this.settings.country),
+          product: normalizeProduct(saved.product ?? this.settings.product),
+        });
       } catch (err) {
         if (err.code !== 'ENOENT') this.log(`ignoring ${this.settingsFile}: ${err.message}`);
       }
     }
-    this.store = new AppleStore({ country: this.country, product: this.settings.product, headless: this.headless, log: this.log });
-    const [products] = await Promise.all([
-      this.store.listProducts().catch((err) => {
-        this.log(`product list: ${err.message}`);
-        return [];
-      }),
-      this.loadVariants(),
-    ]);
+    this.store = new AppleStore({ country: this.settings.country, product: this.settings.product, headless: this.headless, log: this.log });
+    await Promise.all([this.loadProducts(), this.loadVariants()]);
+  }
+
+  async loadProducts() {
+    const products = await this.store.listProducts().catch((err) => {
+      this.log(`product list: ${err.message}`);
+      return [];
+    });
     for (const p of products) if (p.image) this.productImages[p.slug] ??= p.image;
     this.products = products.map(({ slug, name }) => ({ slug, name }));
   }
@@ -126,15 +137,46 @@ export class Checker {
     Object.assign(this.productImages, variants.productImages);
   }
 
-  async updateSettings(input) {
+  updateSettings(input) {
+    const previousUpdate = this.settingsUpdate;
+    const previousCheck = this.checking;
+    const update = (async () => {
+      if (previousUpdate) await previousUpdate.catch(() => {});
+      if (previousCheck) await previousCheck;
+      return this.applySettings(input);
+    })();
+    this.settingsUpdate = update;
+    const clear = () => {
+      if (this.settingsUpdate === update) this.settingsUpdate = null;
+    };
+    update.then(clear, clear);
+    return update;
+  }
+
+  async applySettings(input) {
     const next = { ...this.settings, ...pick(input) };
+    next.country = normalizeCountry(next.country);
     next.postalCode = normalizePostalCode(next.postalCode);
     next.maxDistanceKm = Number(next.maxDistanceKm) || this.settings.maxDistanceKm;
     next.emailTo = String(next.emailTo ?? '').trim();
     next.ntfyTopic = normalizeTopic(next.ntfyTopic);
     next.product = normalizeProduct(next.product);
     next.filters = normalizeFilters(next.filters);
-    const productChanged = next.product !== this.settings.product;
+    const countryChanged = next.country !== this.settings.country;
+    if (countryChanged) {
+      // Part numbers, stores and the product menu all differ between countries.
+      if (!postalCodeFits(next.postalCode, next.country)) next.postalCode = '';
+      this.products = [];
+      this.productImages = {};
+      if (this.store) {
+        await this.store.close().catch(() => {});
+        this.store.browser = undefined;
+        this.store.country = next.country;
+        await this.loadProducts();
+        if (this.products.length && !this.products.some((p) => p.slug === next.product)) next.product = this.products[0].slug;
+      }
+    }
+    const productChanged = countryChanged || next.product !== this.settings.product;
     if (productChanged) {
       Object.assign(next, { model: 'all', filters: {} });
       this.catalog = [];
@@ -181,12 +223,17 @@ export class Checker {
       error: this.error,
       emailEnabled: Boolean(this.env.RESEND_API_KEY),
       pushEnabled: Boolean(this.push),
+      countries: Object.entries(COUNTRIES).map(([id, c]) => ({ id, name: c.name, postal: c.postal, locale: c.locale })),
       ntfyServer: (this.env.NTFY_SERVER || 'https://ntfy.sh').replace(/\/$/, ''),
     };
   }
 
   check() {
-    this.checking ??= this.runCheck().finally(() => {
+    const pendingUpdate = this.settingsUpdate;
+    this.checking ??= (async () => {
+      if (pendingUpdate) await pendingUpdate.catch(() => {});
+      await this.runCheck();
+    })().finally(() => {
       this.checking = null;
     });
     return this.checking;
@@ -206,7 +253,9 @@ export class Checker {
 
   async checkOnce() {
     const { product, model, postalCode, maxDistanceKm } = this.settings;
-    if (!postalCode) throw new Error('set a postal code');
+    if (!postalCode || !postalCodeFits(postalCode, this.settings.country)) {
+      throw new Error(`enter a valid ${(COUNTRIES[this.settings.country]?.postal ?? 'postal code').toLowerCase()}`);
+    }
     const store = this.store;
     store.product = product;
     if (!store.browser) await store.open();
@@ -237,7 +286,7 @@ export class Checker {
     const stores = new Set(results.pickup.map((p) => p.storeName));
     const sample = results.pickup[0]?.quote || results.delivery[0]?.courierText || '';
     this.log(
-      `checked ${selected.length} model(s) at ${stores.size} store(s) within ${maxDistanceKm} km of ${postalCode}: ` +
+      `checked ${selected.length} model(s) at ${stores.size} store(s) within ${this.settings.country === 'us' ? `${Math.round(maxDistanceKm / 1.609344)} mi` : `${maxDistanceKm} km`} of ${postalCode}: ` +
         `${current.size} available, ${fresh.length} new${sample ? ` (e.g. "${sample}")` : ''}`,
     );
 

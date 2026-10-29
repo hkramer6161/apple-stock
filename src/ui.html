@@ -102,12 +102,10 @@
       </div>
       <div id="options"></div>
       <div class="fields">
+        <select class="field" id="country" aria-label="Country"></select>
         <div class="row2">
-          <input class="field" id="postal" placeholder="Postal code" maxlength="7" autocomplete="postal-code">
-          <select class="field" id="distance">
-            <option value="5">5 km</option><option value="10">10 km</option><option value="25">25 km</option>
-            <option value="50">50 km</option><option value="100">100 km</option><option value="500">500 km</option>
-          </select>
+          <input class="field" id="postal" placeholder="Postal code" maxlength="10" autocomplete="postal-code">
+          <select class="field" id="distance" aria-label="Distance"></select>
         </div>
         <div class="alerts" id="alerts" hidden>
           <button class="link" type="button" id="pushOn">Turn on notifications</button>
@@ -135,7 +133,11 @@ const el = (tag, props = {}, ...kids) => {
   return node;
 };
 const img = (src, cls) => (src ? el('img', { src, alt: '', loading: 'lazy' }) : el('div', { className: cls ?? 'ph' }));
-const money = (n) => (n == null ? '' : `$${Number(n).toLocaleString('en-CA', { maximumFractionDigits: 0 })}`);
+const country = () => state.countries?.find((c) => c.id === state.settings.country);
+const money = (n) => (n == null ? '' : `$${Number(n).toLocaleString(country()?.locale ?? 'en-US', { maximumFractionDigits: 0 })}`);
+// Values are always km; US users pick in miles.
+const KM_PER_MILE = 1.609344;
+const distances = (us) => (us ? [5, 10, 25, 50, 100, 300].map((mi) => [Math.round(mi * KM_PER_MILE), `${mi} mi`]) : [5, 10, 25, 50, 100, 500].map((km) => [km, `${km} km`]));
 const short = (name, product) => (product && /^[^a-z]/.test(name.slice(product.length + 1)) && name.startsWith(`${product} `) ? name.slice(product.length + 1) : name);
 const ago = (iso) => {
   const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
@@ -237,7 +239,18 @@ function renderControls() {
 
   if (document.activeElement !== $('postal')) $('postal').value = settings.postalCode;
   if (document.activeElement !== $('email')) $('email').value = settings.emailTo;
-  $('distance').value = String(settings.maxDistanceKm);
+  if (!$('country').options.length) {
+    $('country').replaceChildren(...(state.countries ?? []).map((c) => el('option', { value: c.id, textContent: c.name })));
+    if (!country()) $('country').append(el('option', { value: settings.country, textContent: settings.country.toUpperCase() }));
+  }
+  $('country').value = settings.country;
+  $('postal').placeholder = country()?.postal ?? 'Postal code';
+  const options = distances(settings.country === 'us');
+  if ($('distance').dataset.country !== settings.country) {
+    $('distance').dataset.country = settings.country;
+    $('distance').replaceChildren(...options.map(([km, label]) => el('option', { value: String(km), textContent: label })));
+  }
+  $('distance').value = String(nearestKm(settings.country === 'us', settings.maxDistanceKm));
   $('email').hidden = !state.emailEnabled;
   const topic = settings.ntfyTopic;
   $('ntfyOn').hidden = Boolean(topic);
@@ -283,6 +296,11 @@ $('ntfyState').onclick = () => navigator.clipboard?.writeText(state.settings.ntf
 $('ntfyTest').onclick = async () => {
   const res = await fetch('/api/ntfy/test', { method: 'POST' });
   if (!res.ok) $('ntfyState').textContent = (await res.json()).error;
+};
+const nearestKm = (us, km) => distances(us).reduce((a, b) => (Math.abs(b[0] - km) < Math.abs(a[0] - km) ? b : a))[0];
+$('country').onchange = () => {
+  const next = $('country').value;
+  save({ country: next, maxDistanceKm: nearestKm(next === 'us', state.settings.maxDistanceKm) });
 };
 $('distance').onchange = () => save({ maxDistanceKm: Number($('distance').value) });
 for (const id of ['postal', 'email']) $(id).onkeydown = (e) => e.key === 'Enter' && $(id).blur();

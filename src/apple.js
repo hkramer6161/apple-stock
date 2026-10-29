@@ -10,6 +10,18 @@ const CATEGORIES = [
   { id: 'buy-mac', index: 'shop/buy-mac', link: /shop\/buy-mac\/([a-z0-9-]+)/g },
   { id: 'buy-airpods', index: 'airpods/', link: /shop\/goto\/buy_airpods\/([a-z0-9_]+)/g },
 ];
+// Countries the UI offers. Other Apple Store country paths (`uk`, `au`, ...) work from COUNTRY in .env.
+export const COUNTRIES = {
+  ca: { name: 'Canada', locale: 'en-CA', postal: 'Postal code' },
+  us: { name: 'United States', locale: 'en-US', postal: 'ZIP code' },
+};
+
+export function normalizeCountry(value) {
+  const country = String(value ?? '').trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(country)) throw new Error(`unsupported country ${value}`);
+  return country;
+}
+
 const PRODUCT_ID = new RegExp(`^(${CATEGORIES.map((c) => c.id).join('|')})/[a-z0-9-]+$`);
 
 export function normalizeProduct(value) {
@@ -40,6 +52,10 @@ export class AppleStore {
     this.log = log;
   }
 
+  get locale() {
+    return COUNTRIES[this.country]?.locale ?? 'en-US';
+  }
+
   get origin() {
     return 'https://www.apple.com';
   }
@@ -67,7 +83,7 @@ export class AppleStore {
 
   async newSession() {
     await this.context?.close().catch(() => {});
-    this.context = await this.browser.newContext({ userAgent: userAgentFor(this.browser.version()), locale: 'en-CA' });
+    this.context = await this.browser.newContext({ userAgent: userAgentFor(this.browser.version()), locale: this.locale });
     this.page = await this.context.newPage();
   }
 
@@ -81,7 +97,7 @@ export class AppleStore {
 
   async fetchPage(product = this.product) {
     const url = this.urlFor(product);
-    const res = await fetch(url, { headers: { 'User-Agent': userAgentFor('130'), 'Accept-Language': 'en-CA' }, redirect: 'manual' });
+    const res = await fetch(url, { headers: { 'User-Agent': userAgentFor('130'), 'Accept-Language': this.locale }, redirect: 'manual' });
     if (res.status !== 200) throw new Error(`${url} returned ${res.status}`);
     return res.text();
   }

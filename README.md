@@ -2,7 +2,7 @@
 
 Get pinged the moment an Apple product can be picked up at a store near you, or sent by Apple's 2-hour courier delivery.
 
-It was built for the iPhone Duo on apple.com/ca and works for every iPhone, iPad, Mac, Studio Display and AirPods model in the store (Apple Watch isn't supported yet). Pick a product from the menu in the UI and narrow it down by colour, storage, size, chip or connectivity. For Macs, only the standard configurations that stores keep in stock are listed. Custom build-to-order Macs always ship from Apple.
+It was built for the iPhone Duo on apple.com/ca and works for every iPhone, iPad, Mac, Studio Display and AirPods model in the store (Apple Watch isn't supported yet). It works in the US and Canadian Apple Stores: pick the country in the UI (ZIP codes and miles for the US). Pick a product from the menu in the UI and narrow it down by colour, storage, size, chip or connectivity. For Macs, only the standard configurations that stores keep in stock are listed. Custom build-to-order Macs always ship from Apple.
 
 ## How it works
 
@@ -64,7 +64,7 @@ npm start                     # checks every INTERVAL_SECONDS until stopped
 
 To run a single check: `npm run check`. Add `-- --dry-run` to log results without notifying or saving state.
 
-Then open http://localhost:4321 to pick the model, colours, storage and postal code.
+Then open http://localhost:4321 to pick the country, model, colours, storage and postal/ZIP code.
 
 **On your phone:** browsers only allow push notifications on HTTPS pages, so the phone needs an HTTPS link to the computer. The easiest private way is [Tailscale](https://tailscale.com): install it on both devices, run `tailscale serve --bg 4321` on the computer, and open the `https://<computer>.<tailnet>.ts.net` link it prints. Don't expose the UI on the public internet: anyone who can open it can change the settings.
 
@@ -87,7 +87,7 @@ The workflow is scheduled every 5 minutes, but GitHub often starts scheduled run
 | Variable | Default | |
 | --- | --- | --- |
 | `POSTAL_CODE` | (required) | Location used for store search and courier delivery, e.g. `M5V3L9` |
-| `COUNTRY` | `ca` | Apple Store country path (`ca`, `uk`, `au`, ... or `us`) |
+| `COUNTRY` | `ca` | Starting Apple Store country (`ca` or `us`, switchable in the UI; other paths like `uk` or `au` work from here) |
 | `PRODUCT` | `iphone-duo` | Store page path, e.g. `buy-iphone/iphone-17`, `buy-ipad/ipad-air`, `buy-mac/macbook-air`, `buy-airpods/airpods-pro-3` (a bare slug means `buy-iphone/<slug>`) |
 | `MODELS` | `all` | Comma-separated part numbers or words that must all appear in the model name, e.g. `256GB Night Sky, 512GB` |
 | `MAX_DISTANCE_KM` | `50` | Ignore stores farther than this |
