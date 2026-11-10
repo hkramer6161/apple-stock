@@ -107,7 +107,3 @@ Configure any combination of these:
 ## Caveats
 
 This uses Apple's undocumented storefront endpoints, which can change without notice. Be gentle: checking every couple of minutes is plenty. This project is not affiliated with Apple.
-
-## Design demo
-
-[`demo/index.html`](demo/index.html) is a standalone landing-page concept for this project: a WebGL radar, a simulated stock matrix and a notification feed in one dependency-free HTML file. Open it in any browser. The data in it is simulated.
